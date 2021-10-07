@@ -1,0 +1,5 @@
+spark-submit \
+  --class Lab1 \
+  --supervise \
+  --verbose \
+  lab1.jar
