@@ -2,9 +2,10 @@ import org.apache.log4j.{Level, Logger}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{DataFrame, Dataset, Row, SparkSession}
 import org.apache.spark.sql.functions.{array_contains, count, pow, sum}
-import org.apache.spark.sql.types.IntegerType
+import org.apache.spark.sql.types.{DecimalType, IntegerType}
 
-import java.net.URLDecoder
+import java.net.{URL, URLDecoder}
+import scala.util.Try
 
 object Lab1 {
   def main(args: Array[String]): Unit = {
@@ -14,58 +15,52 @@ object Lab1 {
     val spark: SparkSession = SparkSession
       .builder()
       .appName("Lab1")
-//      .master("local[*]")
-//      .master("spark://spark-master-6:7077")
-      .config("spark.submit.deployMode","client")
+      .master("local[*]")
+//      .config("spark.submit.deployMode","client")
       .getOrCreate()
 
     log.error("Spark session started.")
 
     val logRdd: RDD[(String, String)] = spark
       .sparkContext
-//      .textFile("hdfs://spark-de-master-1.newprolab.com:8020/labs/laba02/logs/")
-      .textFile("/labs/laba02/logs/")
-//      .textFile("src/main/resources/labs/laba02/logs/")
+//      .textFile("/labs/laba02/logs/")
+      .textFile("src/main/resources/labs/laba02/logs/")
       .map(_.split("\t").toList)
-      .filter(_.length == 3)
+      .filter(list => list.length == 3 && list(2).contains("http"))
       .map { case List(uid, _, url) =>
-        val replacedUTF8: String = URLDecoder.decode(url, "UTF-8")
-        val removedWWW: String = replacedUTF8.replace("www.", "")
+        val replacedUTF8: String =
+          Try(new URL(URLDecoder.decode(url, "UTF-8")).getHost).getOrElse("")
 
-        List(uid, removedWWW)
+        val removedStartWww: String = replacedUTF8.replaceAll("^www\\.", "")
+
+        List(uid, removedStartWww)
       }
-      .filter(list => list(1).contains("http://") || list(1).contains("https://"))
-      .map { case List(uid, url) =>
-        val domain: String = url
-          .replace("http://", "")
-          .replace("https://", "")
-          .split("/").head
+      .collect { case list if list(1).nonEmpty => (list.head, list(1)) }
+//      .filter(list => list(1).nonEmpty)
+//      .map(list => (list.head, list(1)))
 
-        List(uid, domain)
-      }
-      .map(list => (list.head, list(1)))
-
-    log.error("logRdd processed.")
 //    println(logRdd.count())
 //    logRdd.take(10).foreach(println)
+    log.error("logRdd processed.")
 
     val logDf: DataFrame = spark
       .createDataFrame(logRdd)
       .toDF("uid", "domain")
 
-    log.error("logRdd converted to logDf.")
 //    logDf.show()
+    log.error("logRdd converted to logDf.")
 
     val autousersDf: DataFrame = spark
       .read
-//      .json("src/main/resources/labs/laba02/autousers.json")
-      .json("/labs/laba02/autousers.json")
+      .json("src/main/resources/labs/laba02/autousers.json")
+//      .json("/labs/laba02/autousers.json")
 
     log.error("autousersDf processed.")
 
     val logsWithAutousersDf: DataFrame =  logDf.crossJoin(autousersDf)
-    log.error("logsWithAutousersDf processed.")
+
 //    logsWithAutousersDf.show()
+    log.error("logsWithAutousersDf processed.")
 
     import spark.implicits._
 
@@ -73,8 +68,8 @@ object Lab1 {
       .withColumn("auto_flag", array_contains($"autousers", $"uid").cast(IntegerType))
       .drop("uid", "autousers")
 
-    log.error("flagDf processed.")
 //    flagDf.show()
+    log.error("flagDf processed.")
 
     flagDf.cache()
     log.error("flagDf cached.")
@@ -88,8 +83,8 @@ object Lab1 {
         sum("auto_flag").as("one_total_count")
       )
 
-    log.error("totalAggDf processed.")
 //    totalAggDf.show()
+    log.error("totalAggDf processed.")
 
     val aggByDomainDf: DataFrame = flagDf
       .groupBy("domain")
@@ -99,32 +94,34 @@ object Lab1 {
       )
       .withColumn("domain_zero_count", $"domain_total_count" - $"domain_one_count")
 
-    log.error("aggByDomainDf processed.")
 //    aggByDomainDf.show()
+    log.error("aggByDomainDf processed.")
 
     flagDf.unpersist()
     log.error("flagDf uncached.")
 
     val composedAggDf: DataFrame = aggByDomainDf.crossJoin(totalAggDf)
-    log.error("composedAggDf processed.")
+
 //    composedAggDf.show()
+    log.error("composedAggDf processed.")
 
     val resultDf: Dataset[Row] = composedAggDf
       .withColumn("relevance", pow($"domain_one_count" / $"total_count", 2)/(($"domain_total_count" / $"total_count") * ($"one_total_count" / $"total_count")))
       .drop("domain_total_count", "domain_one_count", "domain_zero_count", "total_count", "one_total_count")
+      .withColumn("relevance", $"relevance".cast(DecimalType(16, 15)))
       .orderBy($"relevance".desc, $"domain")
       .limit(200)
 
-    log.error("resultDf processed.")
 //    resultDf.show(truncate = false)
 //    println(resultDf.schema)
+    log.error("resultDf processed.")
 
     resultDf
       .repartition(1)
       .rdd
       .map(_.mkString("\t"))
-//      .saveAsTextFile("src/main/resources/rdd")
-      .saveAsTextFile("/user/mikhail.kuznetzov/lab1")
+      .saveAsTextFile("src/main/resources/rdd")
+//      .saveAsTextFile("/user/mikhail.kuznetzov/lab1")
 
     log.error("resultRdd saved.")
   }
