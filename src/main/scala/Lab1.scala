@@ -14,7 +14,7 @@ object Lab1 {
     val spark: SparkSession = SparkSession
       .builder()
       .appName("Lab1")
-      .master("local[*]")
+//      .master("local[*]")
 //      .master("spark://spark-master-6:7077")
       .config("spark.submit.deployMode","client")
       .getOrCreate()
@@ -66,7 +66,6 @@ object Lab1 {
     val logsWithAutousersDf: DataFrame =  logDf.crossJoin(autousersDf)
     log.error("logsWithAutousersDf processed.")
 //    logsWithAutousersDf.show()
-
 
     import spark.implicits._
 
