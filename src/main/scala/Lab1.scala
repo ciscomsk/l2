@@ -58,6 +58,7 @@ object Lab1 {
     log.error("autousersDf processed.")
 
     val logsWithAutousersDf: DataFrame =  logDf.crossJoin(autousersDf)
+//    logsWithAutousersDf.explain
 
 //    logsWithAutousersDf.show()
     log.error("logsWithAutousersDf processed.")
@@ -101,6 +102,7 @@ object Lab1 {
     log.error("flagDf uncached.")
 
     val composedAggDf: DataFrame = aggByDomainDf.crossJoin(totalAggDf)
+//    composedAggDf.explain
 
 //    composedAggDf.show()
     log.error("composedAggDf processed.")
